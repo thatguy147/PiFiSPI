@@ -2,7 +2,6 @@
  *  #Include declarations
  *************************
  */
-    
     #include "mbed.h"
     #include "main.h"
     #include "sstream"
@@ -13,14 +12,9 @@
  *  # Defines
  *************************
  */
- 
  #define IP_STRING  "192.168.1.11";
  #define IP_PORT    "6001";
  #define openStr    "open";
- 
-  string IP = "192.168.1.11";
-  string port = "6001";
-  string open = "open";
   
 /**************************
  *  Pins used: mbed lpc1768
@@ -49,12 +43,17 @@
     uint16_t    _CANIDArrayLength = 0;
     uint16_t    _CANIDAccepted [64];
   
-    bool _isSPIRunning = false;
-    bool _isCANRunning = false;
-    bool _enableCANForUse = true;
-    bool _enableSPIForUse = true;
-    bool _inConfigMode = false;
-    bool _receivingMessage = false;
+    bool _isSPIRunning      = false;
+    bool _isCANRunning      = false;
+    bool _enableCANForUse   = true;
+    bool _enableSPIForUse   = true;
+    bool _inConfigMode      = false;
+    bool _receivingMessage  = false; //We are in the middle of receiving a message;
+    bool _readingComplete   = false; //We were reading a message, and now it's complete.
+    
+    string IP = "192.168.1.11";
+    string port = "6001";
+    string open = "open";
  
     void initCAN()
     {
@@ -90,6 +89,9 @@
         addNewID(0x01);
         addNewID(0x0B);
         addNewID(0x0C);
+        addNewID(0x133);
+        addNewID(0x621);
+        addNewID(0x107);
         pc.printf("\r\nDefault IDs added"); 
     }
     
@@ -99,15 +101,19 @@
         _CANIDArrayLength++;
     }
     
-    void removeID(uint16_t canID)
+    bool removeID(uint16_t canID)
     {
+        bool idRemoved = false;
         for(int i = 0; i <= _CANIDArrayLength; i++)
         {
             if(_CANIDAccepted[i] == canID)
             {
                 _CANIDAccepted[i] = 0x00;
+                idRemoved = true;
             }
         }
+        
+        return idRemoved;
     }
     
     bool isCANIDRecognised(uint16_t id)
@@ -128,10 +134,40 @@
     {
         std::stringstream ss;
         std::string s;
-        ss << std::hex << i;
-        s = (i == 0) ? "00" : ss.str();
+        if(i != 0x00)
+        {
+            ss << std::hex << std::uppercase << i;
+            s = (i <= 0x0F) ? "0"+ss.str() : ss.str();
+        }
+        else
+        {
+            ss << std::hex << std::uppercase << i;
+            s = (i == 0) ? "00" : ss.str();
+        }
 
         return s;
+    }
+    
+    std::string idIntToString(int i)
+    {
+        std::stringstream ss;
+        std::string s;
+        ss << std::hex << std::uppercase << i;
+        if(i <= 0x00F) //less than= 15
+        {
+            s = "00"+ss.str();
+        }
+        else if(i > 0x00F && i <= 0x0FF)
+        {
+            s = "0"+ss.str();
+        }
+        else
+        {
+            s = ss.str();
+        }
+        
+        return s;
+        
     }
     
     uint16_t canIDStringToInt(string str)
@@ -141,6 +177,8 @@
         buffer >> id;
         return id;
     }
+    
+    
     
     void handleCommand(string cmdID, string cmd)
     {
@@ -163,9 +201,9 @@
     void handleCANMessage(CANMessage can_msg)
     {
         
-            if(isCANIDRecognised(can_MsgRx.id))
-            {
-                std::string _id = intToString(can_MsgRx.id);
+            //if(isCANIDRecognised(can_MsgRx.id))
+            //{
+                std::string _id = idIntToString(can_MsgRx.id);
                 std::string _DB0 = intToString(can_MsgRx.data[0]);
                 std::string _DB1 = intToString(can_MsgRx.data[1]);
                 std::string _DB2 = intToString(can_MsgRx.data[2]);
@@ -175,7 +213,8 @@
                 std::string _DB6 = intToString(can_MsgRx.data[6]);
                 std::string _DB7 = intToString(can_MsgRx.data[7]);
                 
-                string str = "[" + _id + " " + _DB0 + " " + _DB1 + " " + _DB2  + " " + _DB3 + " " + _DB4 + " " + _DB5 + " " + _DB6 + " " + _DB7 + "]\r";
+                //string str = "[" + _id + " " + _DB0 + " " + _DB1 + " " + _DB2  + " " + _DB3 + " " + _DB4 + " " + _DB5 + " " + _DB6 + " " + _DB7 + "]\r";
+                string str = "[" + _id + " " + _DB0 + _DB1 + _DB2 + _DB3 + _DB4 + _DB5 + _DB6 + _DB7 + "]\r";
                 std::string id = str;
                 char * writable = new char[str.size() + 1];
                 std::copy(str.begin(), str.end(), writable);
@@ -183,7 +222,10 @@
                 pc.printf(writable);
                 serial_spi.writeString(writable);
                 delete[] writable;
-            }   
+            //}
+            //else{
+                //This is a message that has a messageID  we are not interested in.
+            //}
     }
     
     
@@ -191,50 +233,156 @@
     {
         while(1)
         {
-            if((can1.read(can_MsgRx)) && (!_inConfigMode))
+            if((can1.read(can_MsgRx)) && (_inConfigMode == false))
             {
-                handleCANMessage(can_MsgRx);
+                handleCANMessage(can_MsgRx); //Sending message to Android 
             }
             
             while(serial_spi.readable()) //While we have something to read from SPI (from the Android)
             {
-                char c = (char)serial_spi.getc();
+                char c = (char)serial_spi.getc(); //read Byte from WiFiModule 
                 pc.printf("%c",c);
-                if(c == '[') //<
+                if((c == '[') || (c =='{')) //'[' is the START of a Message '[' = CAN Message, '{' Configuration Message
                 {
                     pc.printf("got start");
                     _receivingMessage = true;
                 }
                  
-                if(c == ']')// >
+                else if((c == ']') || (c == '}'))//']' is the END of a Message '[' = CAN Message, '{' Configuration Message
                 {
                     pc.printf("got end");
                     buffer[buffer_pos] = c;
                     buffer_pos++;
                     //handleInput();
                     _receivingMessage = false;
+                    _readingComplete = true;
                 }
                 
-                if(_receivingMessage == true)
+                if(_receivingMessage == true) // in the middle of receiving a message
                 {
                     buffer[buffer_pos] = c;
                     buffer_pos++;
                 }
                 
-                if((buffer[0] == '[' ) && (buffer[31] == ']') && (buffer_pos == 32))
+                if(_readingComplete == true) //Received a message with complete SOF and EOF.
                 {
+                    if((buffer[0] == '[' ) && (buffer[31] == ']') && (buffer_pos == 32))
+                    {
+                        buffer[0] = '\0';
+                        buffer_pos = 0;
+                        //handleInput();
+                        //we have a CAN message, now handle it.
+                    }
+                    else if((buffer[0] == '{' ) && (buffer[buffer_pos-1] == '}'))
+                    {
+                        //_inConfigMode = true; 
+                        //buffer[0] = '\0';
+                        //buffer_pos = 0;
+                        configMode();
+                        
+                    }
+                    else{
+                        //We SHOULDN'T enter here, if we do, clear the buffer, we got a dodgy message
+                        pc.printf("We are in the unwanted else");
+                        buffer[0] = '\0';
+                        buffer_pos = 0;
+                    }
+                    
+                    _readingComplete = false; // we are done now, finished our reading, reset buffer.
                     buffer[0] = '\0';
                     buffer_pos = 0;
-                    //handleInput();
-                    //we have a CAN message, now handle it.
                 }
             }
         }
     }
         
-    void configMode(string command)
+    void configMode()
     {
-    
+        char command_type = buffer[1]; //{SI 123}
+        pc.printf("inconfig\n");
+        switch(command_type){
+            case 'S':
+            pc.printf("in switch\n");
+                        if(buffer[2] == 'I'){
+                            pc.printf("in Set ID Case");
+                            std::string stringID = "";
+                            stringID += buffer[3];
+                            stringID += buffer[4];
+                            stringID += buffer[5];
+                            stringID += buffer[6];
+                            pc.printf("This is what you're looking for: ");
+                            char * writable = new char[stringID.size()+1];
+                            std::copy(stringID.begin(), stringID.end(), writable);
+                            writable[stringID.size()] = '\0';
+                            pc.printf(writable);
+                            pc.printf(" -------");
+                            
+                            uint16_t id = canIDStringToInt(stringID);
+                            addNewID(id);
+                            pc.printf("added");
+                            _inConfigMode = false;
+                            serial_spi.writeString("{ID Added}");
+                            serial_spi.writeString("                  ");
+                            serial_spi.writeString("                  ");
+                            serial_spi.writeString("                  ");
+                                //serial_spi.flush();
+                            //serial_spi.flush();
+                            //pc.printf(stringID);
+                            //uint16_t = canIDStringToInt(//buffer[3] -> buffer[bufferpos-1]
+                        }
+                        break;
+            
+            case 'R':
+                        if(buffer[2] == 'I'){
+                            std::string stringID = "";
+                            stringID += buffer[3];
+                            stringID += buffer[4];
+                            stringID += buffer[5];//(3,buffer[4]);
+                            stringID += buffer[6];
+                            pc.printf("This is what you're looking for: ");
+                            char * writable = new char[stringID.size()+1];
+                            std::copy(stringID.begin(), stringID.end(), writable);
+                            writable[stringID.size()] = '\0';
+                            pc.printf(writable);
+                            pc.printf(" -------");
+                            
+                            uint16_t id = canIDStringToInt(stringID);
+                            bool hasIDBeenRemoved = removeID(id);
+                            if(hasIDBeenRemoved){
+                                serial_spi.writeString("{ID Removed}");
+                                serial_spi.writeString("                  ");
+                            serial_spi.writeString("            ");
+                            }
+                            else{
+                                
+                                serial_spi.writeString("ID didn't exist/wasn't removed}");
+                                serial_spi.writeString("                        ");
+                                //serial_spi.flush();
+                                
+                            }
+                            pc.printf("removed");
+                            _inConfigMode = false;
+                            //Remove ID
+                        }
+                        break;
+                        
+            case 'E':
+                        if(buffer[2] == 'C'){
+                            if(_inConfigMode){
+                                _inConfigMode = false;
+                            }
+                            else{
+                                _inConfigMode = true;
+                            }
+                            pc.printf("in the method anyway");
+                        }
+                        break;
+            default:
+                        break;
+        
+        }
+        
+        
     }
     
  

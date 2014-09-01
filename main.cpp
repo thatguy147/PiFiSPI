@@ -239,38 +239,65 @@
     
     void handleCANMessageBytes(CANMessage can_msg) // Bytes
     {
+       t.start();
        int id = can_msg.id;
-       char c = (char) id;
-       char *id_pos = &c;
+       char cId[2];// = (char) id;
+       cId[0] = (id >> 8) & 0xff; 
+       cId[1] = id & 0xff;
+       pc.printf("%c %c", cId[0], cId[1]);
+       //char *id_pos = c; 
+       //printf("\nint %d", id);
+       //printf("\nchar %d", c);
+       //printf("\npt %d", id_pos);
+       //char *newArray = new char[9];
+       char newArray[11];
+       newArray[0] = cId[0];
+       newArray[1] = cId[1];
+       newArray[2] = can_msg.data[0];
+       newArray[3] = can_msg.data[1];
+       newArray[4] = can_msg.data[2];
+       newArray[5] = can_msg.data[3];
+       newArray[6] = can_msg.data[4];
+       newArray[7] = can_msg.data[5];
+       newArray[8] = can_msg.data[6];
+       newArray[9] = can_msg.data[7];
+       newArray[10] = '\0';
        
-       char * newArray = new char[9];
-       const char *byteArray = (const char*)can_msg.data;
-       strcat(newArray, id_pos);
-       strcat(newArray, byteArray);
+       //unsigned char *byteArray = can_msg.data;
        
-       
+       //strcat(newArray, (const char *)c);
+       //strcat(newArray, (const char*)byteArray);
+        //pc.printf("%d ", id_pos);(const char*)
+        //pc.printf("%d ", byteArray[1]);
+        //pc.printf("%d ", byteArray[2]);
+        //pc.printf("%d ", byteArray[3]);
+        //pc.printf("%d ", byteArray[4]);
+        //pc.printf("\n\n");
       // const char *c = (const char *)can_msg.data;
        
        //const char *c = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
         //byteArray = can_msg.data[0];// = can_msg.data;
         //void SC16IS750::writeBytes(const char *data, int len)
-        pc.printf("%d\t", newArray[0]);
-        pc.printf("%d\t", newArray[1]);
-        pc.printf("%d\t", newArray[2]);
-        pc.printf("%d\t", newArray[3]);
-        pc.printf("%d\t", newArray[4]);
-        pc.printf("%d\t", newArray[5]);
-        pc.printf("%d\t", newArray[6]);
-        pc.printf("%d\t", newArray[7]);
-        pc.printf("%d\t", newArray[8]);
-        pc.printf("%d\t", newArray[9]);
+        //pc.printf("\r\n");
+        //pc.printf("%d ", (int)newArray[0]);
+        //pc.printf("%d ", (int)newArray[1]);
+        //pc.printf("%d ", (int)newArray[2]);
+       // pc.printf("%d ", (int)newArray[3]);
+       // pc.printf("%d ", (int)newArray[4]);
+        //pc.printf("%d ", (int)newArray[5]);
+       // pc.printf("%d ", (int)newArray[6]);
+        //pc.printf("%d ", (int)newArray[7]);
+       // pc.printf("%d ", (int)newArray[8]);
         
-        
-        
-        serial_spi.writeBytes(newArray, 9);
+        serial_spi.writeBytes(newArray, 10);
         //serial_spi.flush();
         serial_spi.writeString("\n");
-        pc.printf("send... I think...\r\n");
+        //pc.printf("send... I think...\r\n");
+        //delete[] byteArray;
+        t.stop();
+        pc.printf("The time taken was %d us\r\n", t.read_us());
+        t.reset();
+        
     }
     
     void mainReading()
@@ -279,8 +306,8 @@
         {
             if((can1.read(can_MsgRx)) && (_inConfigMode == false))
             {
-                //handleCANMessage(can_MsgRx); //Sending message to Android 
-                handleCANMessageBytes(can_MsgRx);
+                //handleCANMessage(can_MsgRx); //String  847 us
+                handleCANMessageBytes(can_MsgRx); //Byte 377us
             }
             
             while(serial_spi.readable()) //While we have something to read from SPI (from the Android)

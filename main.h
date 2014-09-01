@@ -19,6 +19,7 @@
    void handleCommand(string cmdID, string cmd);
    void mainReading();
    void configMode(string command);
-   void handleCANMessage(CANMessage can_msg); 
+   void handleCANMessage(CANMessage can_msg);
+   void handleCANMessageBytes(CANMessage can_msg); 
    
 #endif 
